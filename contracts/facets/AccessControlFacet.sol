@@ -4,6 +4,10 @@ import "./../libraries/LibAppStorage.sol";
 import "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract AccessControlFacet is Modifiers, IAccessControl {
+    function storageLayout() internal pure returns (AccessControlData storage) {
+        return LibAppStorage.AccessControlStorage();
+    }
+
     function hasRole(bytes32 role, address account)
         public
         view
@@ -11,7 +15,7 @@ contract AccessControlFacet is Modifiers, IAccessControl {
         override
         returns (bool)
     {
-        return s.roles[role].members[account];
+        return storageLayout().roles[role].members[account];
     }
 
     function _checkRole(bytes32 role, address account) internal view virtual {
@@ -36,7 +40,7 @@ contract AccessControlFacet is Modifiers, IAccessControl {
         override
         returns (bytes32)
     {
-        return s.roles[role].adminRole;
+        return storageLayout().roles[role].adminRole;
     }
 
     function grantRole(bytes32 role, address account)
@@ -76,20 +80,20 @@ contract AccessControlFacet is Modifiers, IAccessControl {
 
     function _setRoleAdmin(bytes32 role, bytes32 adminRole) internal virtual {
         bytes32 previousAdminRole = getRoleAdmin(role);
-        s.roles[role].adminRole = adminRole;
+        storageLayout().roles[role].adminRole = adminRole;
         emit RoleAdminChanged(role, previousAdminRole, adminRole);
     }
 
     function _grantRole(bytes32 role, address account) internal virtual {
         if (!hasRole(role, account)) {
-            s.roles[role].members[account] = true;
+            storageLayout().roles[role].members[account] = true;
             emit RoleGranted(role, account, _msgSender());
         }
     }
 
     function _revokeRole(bytes32 role, address account) internal virtual {
         if (hasRole(role, account)) {
-            s.roles[role].members[account] = false;
+            storageLayout().roles[role].members[account] = false;
             emit RoleRevoked(role, account, _msgSender());
         }
     }

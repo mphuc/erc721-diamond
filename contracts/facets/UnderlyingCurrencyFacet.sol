@@ -5,11 +5,15 @@ import "./../libraries/LibAppStorage.sol";
 contract UnderlyingCurrencyFacet is Modifiers {
     event CurrencySet(address tokenAddress, bool flag);
 
+    function storageLayout() internal pure returns (CurrencyData storage) {
+        return LibAppStorage.CurrencyStorage();
+    }
+
     function setCurrency(address tokenAddress, bool flag) external onlyOwner {
         if (tokenAddress == address(0)) {
-            s.supportsEther = flag;
+            storageLayout().supportsEther = flag;
         } else {
-            s.supportsCurrency[tokenAddress] = flag;
+            storageLayout().supportsCurrency[tokenAddress] = flag;
         }
         emit CurrencySet(tokenAddress, flag);
     }
@@ -21,7 +25,7 @@ contract UnderlyingCurrencyFacet is Modifiers {
     {
         return
             tokenAddress == address(0)
-                ? s.supportsEther
-                : s.supportsCurrency[tokenAddress];
+                ? storageLayout().supportsEther
+                : storageLayout().supportsCurrency[tokenAddress];
     }
 }

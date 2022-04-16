@@ -1,8 +1,9 @@
 import * as dotenv from "dotenv";
 
 import { HardhatUserConfig, task } from "hardhat/config";
-import "hardhat-deploy";
+
 import "@nomiclabs/hardhat-ethers";
+import "hardhat-diamond-abi";
 import "@nomiclabs/hardhat-etherscan";
 import "@nomiclabs/hardhat-waffle";
 import "@typechain/hardhat";
@@ -11,8 +12,6 @@ import "solidity-coverage";
 
 dotenv.config();
 
-// This is a sample Hardhat task. To learn how to create your own go to
-// https://hardhat.org/guides/create-task.html
 task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
   const accounts = await hre.ethers.getSigners();
 
@@ -21,33 +20,46 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
   }
 });
 
-// You need to export an object to set up your config
-// Go to https://hardhat.org/config/ to learn more
-
 const config: HardhatUserConfig = {
   solidity: "0.8.10",
-  namedAccounts: {
-    deployer: 0,
-    feeCollector: 0,
-  },
   networks: {
-    localhost: {
-      live: false,
-      saveDeployments: true,
-      tags: ["local"],
-    },
+    localhost: {},
     hardhat: {
-      live: false,
-      saveDeployments: true,
-      tags: ["test", "local"],
+      forking: {
+        url: "https://mainnet.aurora.dev",
+      },
+      accounts: [
+        {
+          privateKey: String(process.env.MAINNET_PRIV_KEY),
+          balance: (100e18).toString(),
+        },
+      ],
+    },
+    auroraTestnet: {
+      url: "https://testnet.aurora.dev",
+      accounts: [String(process.env.TESTNET_PRIV_KEY)],
+    },
+    auroraMainnet: {
+      url: "https://mainnet.aurora.dev",
+      accounts: [String(process.env.MAINNET_PRIV_KEY)],
+      timeout: 600000,
     },
   },
-
+  diamondAbi: {
+    name: "ERC721Diamond",
+    include: [
+      "AccessControlFacet",
+      "ERC721URIStorage",
+      "RentalFacet",
+      "UnderlyingCurrencyFacet",
+      "WithdrawalFacet",
+      "DiamondLoupeFacet",
+      "DiamondCutFacet",
+      "OwnershipFacet",
+    ],
+  },
   paths: {
     sources: "contracts",
-    deploy: "deploy",
-    deployments: "deployments",
-    imports: "imports",
   },
   typechain: {
     outDir: "typechain",

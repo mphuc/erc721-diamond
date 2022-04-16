@@ -2,8 +2,9 @@
 pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 
-contract Greeter {
+contract Greeter is ERC721Holder {
     string private greeting;
 
     constructor(string memory _greeting) {

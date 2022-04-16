@@ -8,42 +8,27 @@ import "@openzeppelin/contracts/access/IAccessControl.sol";
 
 contract ERC721Init is UsingEIP712 {
     struct Init {
-        string name;
-        string symbol;
         string domainName;
         string version;
-        address feeCollector;
-        address defaultMinter;
     }
 
     function init(Init calldata data) external {
-        s.name = data.name;
-        s.symbol = data.symbol;
-        s.domainName = data.domainName;
-        s.version = data.version;
-        s.feeCollector = data.feeCollector;
-        s.supportsEther = true;
-        s.roles[MINTER_ROLE].members[data.defaultMinter] = true;
-        s.roles[DEFAULT_ADMIN_ROLE].members[msg.sender] = true;
-        LibDiamond.DiamondStorage storage ds = LibDiamond.diamondStorage();
-        ds.supportedInterfaces[type(IERC721).interfaceId] = true;
-        ds.supportedInterfaces[type(IERC721Metadata).interfaceId] = true;
-        ds.supportedInterfaces[type(IAccessControl).interfaceId] = true;
+        EIP712Data storage eip = LibAppStorage.EIP712Storage();
 
         bytes32 hashedName = keccak256(bytes(data.domainName));
-        bytes32 hashedVersion = keccak256(bytes(data.domainName));
+        bytes32 hashedVersion = keccak256(bytes(data.version));
         bytes32 typeHash = keccak256(
             "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
         );
-        s._HASHED_NAME = hashedName;
-        s._HASHED_VERSION = hashedVersion;
-        s._CACHED_CHAIN_ID = block.chainid;
-        s._CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator(
+        eip._HASHED_NAME = hashedName;
+        eip._HASHED_VERSION = hashedVersion;
+        eip._CACHED_CHAIN_ID = block.chainid;
+        eip._CACHED_DOMAIN_SEPARATOR = _buildDomainSeparator(
             typeHash,
             hashedName,
             hashedVersion
         );
-        s._CACHED_THIS = address(this);
-        s._TYPE_HASH = typeHash;
+        eip._CACHED_THIS = address(this);
+        eip._TYPE_HASH = typeHash;
     }
 }

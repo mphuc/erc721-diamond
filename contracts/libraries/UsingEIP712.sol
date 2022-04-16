@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract UsingEIP712 is Modifiers {
     function _domainSeparatorV4() internal view returns (bytes32) {
+        EIP712Data storage s = LibAppStorage.EIP712Storage();
         if (
             address(this) == s._CACHED_THIS &&
             block.chainid == s._CACHED_CHAIN_ID

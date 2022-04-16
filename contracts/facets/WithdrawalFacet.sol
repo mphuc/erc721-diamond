@@ -14,22 +14,28 @@ contract WithdrawalFacet is Modifiers {
         uint256 amount
     );
 
+    function storageLayout() internal pure returns (WithdrawalData storage) {
+        return LibAppStorage.WithdrawalStorage();
+    }
+
     function withdrawETH() external {
-        uint256 balance = s.ethPending[msg.sender];
-        s.ethPending[msg.sender] = 0;
+        WithdrawalData storage wd = storageLayout();
+        uint256 balance = wd.ethPending[msg.sender];
+        wd.ethPending[msg.sender] = 0;
         payable(msg.sender).transfer(balance);
         emit WithdrawETH(msg.sender, balance);
     }
 
     function withdrawERC20(address token) external {
-        uint256 balance = s.erc20Pending[token][msg.sender];
-        s.erc20Pending[token][msg.sender] = 0;
+        WithdrawalData storage wd = storageLayout();
+        uint256 balance = wd.erc20Pending[token][msg.sender];
+        wd.erc20Pending[token][msg.sender] = 0;
         IERC20(token).safeTransfer(msg.sender, balance);
         emit WithdrawERC20(msg.sender, token, balance);
     }
 
     function pendingETH(address account) external view returns (uint256) {
-        return s.ethPending[account];
+        return storageLayout().ethPending[account];
     }
 
     function pendingERC20(address account, address token)
@@ -37,6 +43,6 @@ contract WithdrawalFacet is Modifiers {
         view
         returns (uint256)
     {
-        return s.erc20Pending[token][account];
+        return storageLayout().erc20Pending[token][account];
     }
 }

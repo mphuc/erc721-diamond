@@ -31,16 +31,22 @@ contract RentalFacet is UsingEIP712 {
         address indexed renter
     );
 
+    function storageLayout() internal pure returns (RentalData storage) {
+        return LibAppStorage.RentalStorage();
+    }
+
     function rent(
         RentalAgreement calldata agreement,
         bytes calldata ownerSignature,
         bytes calldata renterSignature
     ) external {
         // CHECKS
-        address rentalOwner;
-        address renter;
-        IERC20 token = IERC20(agreement.currency);
-        uint256 total;
+        Rental memory rental;
+        ERC721Data storage ed = LibAppStorage.ERC721Storage();
+        WithdrawalData storage wd = LibAppStorage.WithdrawalStorage();
+        CurrencyData storage cd = LibAppStorage.CurrencyStorage();
+        RentalData storage rd = LibAppStorage.RentalStorage();
+
         {
             require(
                 agreement.numberOfUnits > 0 && agreement.unitOfTime >= 1 hours
@@ -48,31 +54,25 @@ contract RentalFacet is UsingEIP712 {
             require(agreement.deadline >= block.timestamp);
             require(!_isRenting(agreement.tokenId));
 
-            {
-                rentalOwner = _verifyAgreement(agreement, ownerSignature);
-                renter = _verifyAgreement(agreement, renterSignature);
-            }
+            address rentalOwner = _verifyAgreement(agreement, ownerSignature);
+            address renter = _verifyAgreement(agreement, renterSignature);
+
             require(
                 msg.sender == renter &&
-                    rentalOwner == s.erc721Owners[agreement.tokenId] &&
+                    rentalOwner == ed.owners[agreement.tokenId] &&
                     rentalOwner != address(0)
             );
             require(
                 agreement.currency != address(0) &&
-                    s.supportsCurrency[agreement.currency]
+                    cd.supportsCurrency[agreement.currency]
             );
-            total = agreement.pricePerUnit.mul(agreement.numberOfUnits);
-            require(token.allowance(msg.sender, address(this)) >= total);
-        }
-
-        // EFFECTS
-        {
-            uint256 before = s.erc20Pending[address(token)][rentalOwner];
-            s.erc20Pending[address(token)][rentalOwner] = before.add(total);
-
-            // clear approvals
-            _transfer(rentalOwner, renter, agreement.tokenId);
-            s.rentals[agreement.tokenId] = Rental({
+            require(
+                IERC20(agreement.currency).allowance(
+                    msg.sender,
+                    address(this)
+                ) >= agreement.pricePerUnit.mul(agreement.numberOfUnits)
+            );
+            rental = Rental({
                 agreement: agreement,
                 owner: rentalOwner,
                 renter: renter,
@@ -80,16 +80,32 @@ contract RentalFacet is UsingEIP712 {
             });
         }
 
+        // EFFECTS
+        {
+            wd.erc20Pending[rental.agreement.currency][rental.owner] = wd
+            .erc20Pending[rental.agreement.currency][rental.owner].add(
+                    agreement.pricePerUnit.mul(agreement.numberOfUnits)
+                );
+
+            // clear approvals
+            _transfer(rental.owner, rental.renter, rental.agreement.tokenId);
+            rd.rentals[agreement.tokenId] = rental;
+        }
+
         // INTERACTIONS
-        token.safeTransferFrom(msg.sender, address(this), total);
+        IERC20(rental.agreement.currency).safeTransferFrom(
+            msg.sender,
+            address(this),
+            agreement.pricePerUnit.mul(agreement.numberOfUnits)
+        );
         emit RentalCreated(
-            agreement.tokenId,
-            rentalOwner,
-            renter,
-            agreement.currency,
+            rental.agreement.tokenId,
+            rental.owner,
+            rental.renter,
+            rental.agreement.currency,
             uint64(block.timestamp),
-            agreement.unitOfTime,
-            agreement.numberOfUnits
+            rental.agreement.unitOfTime,
+            rental.agreement.numberOfUnits
         );
     }
 
@@ -98,11 +114,14 @@ contract RentalFacet is UsingEIP712 {
         bytes calldata ownerSignature
     ) external {
         // CHECKS
+
         require(payback.deadline >= block.timestamp);
         require(_isRenting(payback.tokenId));
         address signer = _verifyPayback(payback, ownerSignature);
-        require(signer == s.rentals[payback.tokenId].owner);
-        Rental memory rental = s.rentals[payback.tokenId];
+        WithdrawalData storage wd = LibAppStorage.WithdrawalStorage();
+        RentalData storage rd = LibAppStorage.RentalStorage();
+        require(signer == rd.rentals[payback.tokenId].owner);
+        Rental memory rental = rd.rentals[payback.tokenId];
         if (payback.paybackAmount > 0) {
             IERC20 token = IERC20(rental.agreement.currency);
             require(
@@ -110,8 +129,8 @@ contract RentalFacet is UsingEIP712 {
                     payback.paybackAmount
             );
 
-            uint256 before = s.erc20Pending[address(token)][rental.renter];
-            s.erc20Pending[address(token)][rental.renter] = before.add(
+            uint256 before = wd.erc20Pending[address(token)][rental.renter];
+            wd.erc20Pending[address(token)][rental.renter] = before.add(
                 payback.paybackAmount
             );
 
@@ -122,7 +141,7 @@ contract RentalFacet is UsingEIP712 {
             );
         }
         _transfer(rental.renter, rental.owner, payback.tokenId);
-        delete s.rentals[payback.tokenId];
+        delete rd.rentals[payback.tokenId];
         assert(!_isRenting(payback.tokenId));
         emit RentalEnd(payback.tokenId, rental.renter, rental.owner);
         emit RentalRefund(
@@ -134,7 +153,8 @@ contract RentalFacet is UsingEIP712 {
     }
 
     function revoke(uint256 tokenId) external {
-        Rental memory rental = s.rentals[tokenId];
+        RentalData storage rd = LibAppStorage.RentalStorage();
+        Rental memory rental = rd.rentals[tokenId];
         require(msg.sender == rental.owner);
         require(_isRenting(tokenId));
         uint256 duration = uint256(rental.agreement.unitOfTime).mul(
@@ -144,24 +164,24 @@ contract RentalFacet is UsingEIP712 {
             block.timestamp > uint256(rental.startingTimestamp).add(duration)
         );
         _transfer(rental.renter, rental.owner, tokenId);
-        delete s.rentals[tokenId];
+        delete rd.rentals[tokenId];
         assert(!_isRenting(tokenId));
         emit RentalEnd(tokenId, rental.renter, rental.owner);
     }
 
-    function onRenting(uint256 tokenId) public view returns (bool) {
+    function isRenting(uint256 tokenId) public view returns (bool) {
         return _isRenting(tokenId);
     }
 
     function getRental(uint256 tokenId) public view returns (Rental memory) {
         require(_isRenting(tokenId));
-        return s.rentals[tokenId];
+        return storageLayout().rentals[tokenId];
     }
 
     function _isRenting(uint256 tokenId) internal view returns (bool) {
         return
-            s.rentals[tokenId].owner != address(0) &&
-            s.rentals[tokenId].renter != address(0);
+            storageLayout().rentals[tokenId].owner != address(0) &&
+            storageLayout().rentals[tokenId].renter != address(0);
     }
 
     function _verifyPayback(
@@ -225,9 +245,10 @@ contract RentalFacet is UsingEIP712 {
         address to,
         uint256 tokenId
     ) internal {
-        s.erc721TokenApprovals[tokenId] = address(0);
-        s.erc721Balances[from] -= 1;
-        s.erc721Balances[to] += 1;
-        s.erc721Owners[tokenId] = to;
+        ERC721Data storage ed = LibAppStorage.ERC721Storage();
+        ed.tokenApprovals[tokenId] = address(0);
+        ed.balances[from] -= 1;
+        ed.balances[to] += 1;
+        ed.owners[tokenId] = to;
     }
 }
